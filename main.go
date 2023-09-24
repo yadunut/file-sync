@@ -42,34 +42,14 @@ var (
 )
 
 type DB struct {
-	db *sqlx.DB
-	sync.Mutex
+	*sqlx.DB
+	mu sync.Mutex
 }
 
 func walk(dir string, db *DB) {
 	defer wg.Done()
 
-	db.Lock()
-	defer db.Unlock()
-	tx := db.db.MustBegin()
-
-	insertStmt, err := tx.Preparex(INSERT_STMT)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer insertStmt.Close()
-
-	updateStmt, err := tx.Preparex(UPDATE_STMT)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer updateStmt.Close()
-
-	// queryStmt, err := tx.Preparex(QUERY_STMT)
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-	// defer queryStmt.Close()
+	toSave := make(map[string][]byte)
 
 	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -99,12 +79,9 @@ func walk(dir string, db *DB) {
 
 			hashResult, ok := results[path]
 			if !ok {
-				_, err := insertStmt.Exec(path, hash)
-				if err != nil {
-					log.Panic(err)
-				}
+				toSave[path] = hash
 				return nil
-			} 
+			}
 
 			// check if hash is same as e if same, do nothing
 			if bytes.Equal(hashResult, hash) {
@@ -115,11 +92,27 @@ func walk(dir string, db *DB) {
 		}
 		return nil
 	})
+	if len(toSave) == 0 {
+		return
+	}
+	db.mu.Lock()
+	tx := db.MustBegin()
+
+	insertStmt, err := tx.Preparex(INSERT_STMT)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer insertStmt.Close()
+
+	for path, hash := range toSave {
+		insertStmt.MustExec(path, hash)
+	}
 
 	err = tx.Commit()
 	if err != nil {
 		log.Panic(err)
 	}
+	db.mu.Unlock()
 }
 
 func main() {
@@ -152,6 +145,6 @@ func main() {
 
 	path := os.Args[1]
 	wg.Add(1)
-	go walk(path, &DB{db: db})
+	go walk(path, &DB{DB: db})
 	wg.Wait()
 }
