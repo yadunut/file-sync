@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"database/sql"
 	"fmt"
 	"io"
 	"io/fs"
@@ -39,6 +38,7 @@ const (
 var (
 	wg      sync.WaitGroup
 	counter atomic.Int64
+	results map[string][]byte = make(map[string][]byte)
 )
 
 type DB struct {
@@ -65,11 +65,11 @@ func walk(dir string, db *DB) {
 	}
 	defer updateStmt.Close()
 
-	queryStmt, err := tx.Preparex(QUERY_STMT)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer queryStmt.Close()
+	// queryStmt, err := tx.Preparex(QUERY_STMT)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+	// defer queryStmt.Close()
 
 	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -96,24 +96,18 @@ func walk(dir string, db *DB) {
 			hash := h.Sum(nil)
 
 			// check if file exists in the database
-			var e Entry
-			if err := queryStmt.QueryRowx(path).StructScan(&e); err != nil {
-				if err == sql.ErrNoRows {
-					// file doesn't exist in db
-					_, err := insertStmt.Exec(path, hash)
-					if err != nil {
-						log.Panic(err)
-					}
-					return nil
-				}
-				if err != sql.ErrNoRows {
+
+			hashResult, ok := results[path]
+			if !ok {
+				_, err := insertStmt.Exec(path, hash)
+				if err != nil {
 					log.Panic(err)
 				}
-			}
+				return nil
+			} 
 
 			// check if hash is same as e if same, do nothing
-			if bytes.Equal(e.Hash, hash) {
-				log.Println("found match")
+			if bytes.Equal(hashResult, hash) {
 				return nil
 			}
 			// if not nil, update
@@ -137,9 +131,24 @@ func main() {
 	db := sqlx.MustOpen("sqlite3", "./test.db")
 	defer db.Close()
 
+	db.MustExec(SCHEMA)
+
 	// instead of using sqlite for querying, what if we query all the files and store into a map?
 
-	db.MustExec(SCHEMA)
+	rows, err := db.Queryx("SELECT path, hash FROM files")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for rows.Next() {
+		var path string
+		var hash []byte
+		err = rows.Scan(&path, &hash)
+		if err != nil {
+			log.Fatal(err)
+		}
+		results[path] = hash
+	}
 
 	path := os.Args[1]
 	wg.Add(1)
