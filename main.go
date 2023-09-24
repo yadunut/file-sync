@@ -13,19 +13,27 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Entry struct {
-	path    string
-	hash    []byte
-	deleted bool
+	Path    string
+	Hash    []byte
+	Deleted bool
 }
 
 const (
 	INSERT_STMT = "INSERT INTO files(path, hash) VALUES (?, ?)"
 	UPDATE_STMT = "UPDATE files SET hash = ?, deleted = ? WHERE path = ?"
 	QUERY_STMT  = "SELECT path, hash, deleted FROM files WHERE path = ?"
+	SCHEMA      = `CREATE TABLE IF NOT EXISTS files 
+  (path TEXT NOT NULL PRIMARY KEY, 
+  hash BLOB NOT NULL, 
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
+  deleted BOOLEAN NOT NULL DEFAULT FALSE
+  )`
 )
 
 var (
@@ -34,7 +42,7 @@ var (
 )
 
 type DB struct {
-	db *sql.DB
+	db *sqlx.DB
 	sync.Mutex
 }
 
@@ -43,24 +51,21 @@ func walk(dir string, db *DB) {
 
 	db.Lock()
 	defer db.Unlock()
-	tx, err := db.db.Begin()
-	if err != nil {
-		log.Panic(err)
-	}
+	tx := db.db.MustBegin()
 
-	insertStmt, err := tx.Prepare(INSERT_STMT)
+	insertStmt, err := tx.Preparex(INSERT_STMT)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer insertStmt.Close()
 
-	updateStmt, err := tx.Prepare(UPDATE_STMT)
+	updateStmt, err := tx.Preparex(UPDATE_STMT)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer updateStmt.Close()
 
-	queryStmt, err := tx.Prepare(QUERY_STMT)
+	queryStmt, err := tx.Preparex(QUERY_STMT)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -91,8 +96,8 @@ func walk(dir string, db *DB) {
 			hash := h.Sum(nil)
 
 			// check if file exists in the database
-			var e *Entry
-			if err := queryStmt.QueryRow(path).Scan(e); err != nil {
+			var e Entry
+			if err := queryStmt.QueryRowx(path).StructScan(&e); err != nil {
 				if err == sql.ErrNoRows {
 					// file doesn't exist in db
 					_, err := insertStmt.Exec(path, hash)
@@ -107,7 +112,7 @@ func walk(dir string, db *DB) {
 			}
 
 			// check if hash is same as e if same, do nothing
-			if bytes.Equal(e.hash, hash) {
+			if bytes.Equal(e.Hash, hash) {
 				log.Println("found match")
 				return nil
 			}
@@ -129,24 +134,12 @@ func main() {
 		return
 	}
 
-	db, err := sql.Open("sqlite3", "./test.db")
-	if err != nil {
-		log.Panic(err)
-	}
+	db := sqlx.MustOpen("sqlite3", "./test.db")
 	defer db.Close()
 
-	createTable := `CREATE TABLE IF NOT EXISTS files 
-  (path TEXT NOT NULL PRIMARY KEY, 
-  hash BLOB NOT NULL, 
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-  )`
+	// instead of using sqlite for querying, what if we query all the files and store into a map?
 
-	_, err = db.Exec(createTable)
-	if err != nil {
-		log.Panic(err)
-	}
+	db.MustExec(SCHEMA)
 
 	path := os.Args[1]
 	wg.Add(1)
