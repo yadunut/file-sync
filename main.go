@@ -11,9 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-
-	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	"time"
 )
 
 type Entry struct {
@@ -22,97 +20,72 @@ type Entry struct {
 	Deleted bool
 }
 
-const (
-	INSERT_STMT = "INSERT INTO files(path, hash) VALUES (?, ?)"
-	UPDATE_STMT = "UPDATE files SET hash = ?, deleted = ? WHERE path = ?"
-	QUERY_STMT  = "SELECT path, hash, deleted FROM files WHERE path = ?"
-	SCHEMA      = `CREATE TABLE IF NOT EXISTS files 
-  (path TEXT NOT NULL PRIMARY KEY, 
-  hash BLOB NOT NULL, 
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-  deleted BOOLEAN NOT NULL DEFAULT FALSE
-  )`
-)
-
 var (
 	wg      sync.WaitGroup
 	counter atomic.Int64
 	results map[string][]byte = make(map[string][]byte)
 )
 
-type DB struct {
-	*sqlx.DB
-	mu sync.Mutex
-}
+const (
+	numWorkers = 100
+)
 
-func walk(dir string, db *DB) {
-	defer wg.Done()
-
-	toSave := make(map[string][]byte)
-
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+func worker(db *DB, num int, paths chan string, cancel chan struct{}) error {
+	defer func() {
+		wg.Done()
+		log.Printf("Worker %d finished\n", num)
+	}()
+	ticker := time.NewTicker(time.Second)
+	numProcessed := 0
+	log.Printf("Worker %d started\n", num)
+	for {
+		select {
+		case <-cancel:
 			return nil
-		}
-		if d.IsDir() && dir != path {
-			wg.Add(1)
-			go walk(path, db)
-			return filepath.SkipDir
-		}
-
-		if d.Type().IsRegular() {
-			path, err = filepath.Abs(path)
-			if err != nil {
-				return nil
-			}
+		case <-ticker.C:
+			log.Printf("Worker %d processed %d files\n", num, numProcessed)
+		case path := <-paths:
 			f, err := os.Open(path)
 			if err != nil {
-				return nil
+				log.Fatal(err)
 			}
-
 			h := sha256.New()
-			io.Copy(h, f)
+			_, err = io.Copy(h, f)
+			if err != nil {
+				log.Fatal(err)
+			}
+			f.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
 			hash := h.Sum(nil)
 
-			// check if file exists in the database
+			numProcessed++
 
 			hashResult, ok := results[path]
 			if !ok {
-				toSave[path] = hash
-				return nil
+				// write to db
+				db.mu.Lock()
+				tx := db.MustBegin()
+				insertStmt, err := tx.Preparex(INSERT_STMT)
+				if err != nil {
+					log.Fatal(err)
+				}
+				insertStmt.MustExec(path, hash)
+				err = tx.Commit()
+				if err != nil {
+					log.Panic(err)
+				}
+				db.mu.Unlock()
+				continue
 			}
 
-			// check if hash is same as e if same, do nothing
+			// hashes match
 			if bytes.Equal(hashResult, hash) {
-				return nil
+				continue
 			}
-			// if not nil, update
-			// not doing this
 		}
-		return nil
-	})
-	if len(toSave) == 0 {
-		return
 	}
-	db.mu.Lock()
-	tx := db.MustBegin()
-
-	insertStmt, err := tx.Preparex(INSERT_STMT)
-	if err != nil {
-		log.Panic(err)
-	}
-	defer insertStmt.Close()
-
-	for path, hash := range toSave {
-		insertStmt.MustExec(path, hash)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		log.Panic(err)
-	}
-	db.mu.Unlock()
 }
 
 func main() {
@@ -120,14 +93,11 @@ func main() {
 		fmt.Println("file-sync requires 1 argument")
 		return
 	}
-
-	db := sqlx.MustOpen("sqlite3", "./test.db")
+	db := NewDB("./test.db")
 	defer db.Close()
-
-	db.MustExec(SCHEMA)
+	log.Println("db created")
 
 	// instead of using sqlite for querying, what if we query all the files and store into a map?
-
 	rows, err := db.Queryx("SELECT path, hash FROM files")
 	if err != nil {
 		log.Fatal(err)
@@ -143,8 +113,39 @@ func main() {
 		results[path] = hash
 	}
 
+	log.Println("Cache Created")
+
+	paths := make(chan string, 1000)
+	cancel := make(chan struct{})
 	path := os.Args[1]
-	wg.Add(1)
-	go walk(path, &DB{DB: db})
+
+	go func() {
+		log.Println("Filewalker started")
+		filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			select {
+			case <-cancel:
+				return filepath.SkipAll
+			default:
+			}
+			if d.Type().IsRegular() {
+				path, err = filepath.Abs(path)
+				if err != nil {
+					return err
+				}
+				paths <- path
+			}
+			return nil
+		})
+		close(cancel)
+		log.Println("Filewalker finished")
+	}()
+
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go worker(db, i, paths, cancel)
+	}
 	wg.Wait()
 }
