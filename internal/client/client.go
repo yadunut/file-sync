@@ -8,23 +8,24 @@ import (
 	"net/http"
 
 	"github.com/yadunut/file-sync/internal/contracts"
+	"github.com/yadunut/file-sync/internal/util"
 )
 
 type Client struct {
 	log    *log.Logger
-	config contracts.Config
+	config util.Config
 }
 
-func NewClient() *Client {
-	return &Client{log: log.Default()}
+func NewClient(config util.Config) *Client {
+	return &Client{log: log.Default(), config: config}
 }
 
 func (c *Client) get(url string) (*http.Response, error) {
 	return http.Get(fmt.Sprintf("http://%s/%s", c.config.GetUrl(), url))
 }
 
-func (c *Client) Version() {
-	res, err := c.get("/version")
+func (c *Client) Version() contracts.Version {
+	res, err := c.get("version")
 	if err != nil {
 		log.Println("is the server running?")
 		log.Fatal(err)
@@ -35,5 +36,5 @@ func (c *Client) Version() {
 		log.Fatal(err)
 	}
 	json.Unmarshal(data, &v)
-	fmt.Println(v.Version)
+	return v
 }

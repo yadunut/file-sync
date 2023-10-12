@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -14,7 +15,7 @@ import (
 )
 
 type Server struct {
-	config     contracts.Config
+	config     util.Config
 	HttpServer *http.Server
 	router     chi.Router
 	Db         *db.DB
@@ -23,9 +24,8 @@ type Server struct {
 
 type Routes map[string]http.HandlerFunc
 
-func CreateServer(Db *db.DB, log *log.Logger) *Server {
+func CreateServer(Db *db.DB, log *log.Logger, config util.Config) *Server {
 	router := chi.NewRouter()
-	config := contracts.Config{Port: ":8080", Host: "localhost"}
 	server := &http.Server{Addr: config.GetUrl(), Handler: router}
 	return &Server{
 		config:     config,
@@ -44,6 +44,7 @@ func (s *Server) Start() error {
 
 func (s *Server) VersionFunc(w http.ResponseWriter, r *http.Request) {
 	data, err := json.Marshal(contracts.Version{Version: util.VERSION})
+	fmt.Println("data: ", data)
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		return
