@@ -1,0 +1,30 @@
+* File Sync
+
+** What it does
+
+** What it does not do
+
+** How does it work?
+
+Start a server with `file-sync server`. This will start a server locally and use IPC to communicate with the client.
+
+The server will initialize the certificate (if needed), and also the sqlite databases.
+
+The client `file-sync file/remote/sync` will check if there is an existing server and just run the given commands on the server.
+
+The server will keep track of the list of directories tbat has been provided to sync. It will also keep track of the list of remotes. It will also keep track of the directories that it is syncing locally. It periodically polls for changes from its remotes and pulls those changes.
+
+How does it detect whether a file has changed? The latest mtime will always be the source of truth. (This could be destructive if the file is being edited on two different machines at the same time. But that is a rare case and we can deal with it later)
+
+So the sync clients will send an array of file info, (hash, mtime, etc. to the remote. Remote will check if file has changed and push the relevant changes.
+
+How does the local client know if a file has changed? The local server will have ionotify(?) running for each of the root directories.
+
+Some edge cases to consider: When running the `file up` and `sync up` commands, we need to ensure that the parent directory directory is not already being provided to sync / for syncing
+
+How does deletion work? who knows. I guess on server start we can check if there are changed files (mtime?)
+
+So firstly, we need to create a server and a client. The server will listen for commands (Do I use http or RPC? Http seems easier with the handler but designing this agnostic would be nice, easier to test)
+
+*** TODO Create a server
+So running ~file-sync server~ will start a http server. I will need a Server struct to be passed around with a logger, database connection and other info necessary. Maybe cancellation would be good also. GRPC sounds interesting for this 👀
