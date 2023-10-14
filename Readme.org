@@ -26,5 +26,19 @@ How does deletion work? who knows. I guess on server start we can check if there
 
 So firstly, we need to create a server and a client. The server will listen for commands (Do I use http or RPC? Http seems easier with the handler but designing this agnostic would be nice, easier to test)
 
-*** TODO Create a server
+*** DONE Create a server
 So running ~file-sync server~ will start a http server. I will need a Server struct to be passed around with a logger, database connection and other info necessary. Maybe cancellation would be good also. GRPC sounds interesting for this 👀
+*** TODO Create the schema for adding directories to the database
+Schema for files
+#+begin_src sqlite
+CREATE TABLE IF NOT EXISTS DIRECTORIES (
+    id INTEGER PRIMARY KEY UNIQUE NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    path TEXT UNIQUE NOT NULL,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+#+end_src
+*** TODO Create the schema for adding remotes to the database
+*** TODO Create the schema for adding remote syncs to the database
+*** TODO Create schema for indexing files

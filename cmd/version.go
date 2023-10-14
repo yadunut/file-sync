@@ -12,8 +12,12 @@ var VersionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "gets the version",
 	Run: func(cmd *cobra.Command, args []string) {
-		c := client.NewClient(util.GetConfig())
-		v := c.Version()
+		log := util.CreateLogger()
+		c := client.NewClient(log, util.GetConfig())
+		v, err := c.Version()
+		if err != nil {
+			log.Fatal(err)
+		}
 		fmt.Println(v.Version)
 	},
 }

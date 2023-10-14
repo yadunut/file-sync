@@ -2,52 +2,71 @@ package server
 
 import (
 	"fmt"
-	"log"
-	"net/http"
+	"path/filepath"
 
-	"encoding/json"
+	"slices"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/yadunut/file-sync/internal/contracts"
 	"github.com/yadunut/file-sync/internal/server/db"
 	"github.com/yadunut/file-sync/internal/util"
+	"go.uber.org/zap"
 )
 
 type Server struct {
-	config     util.Config
-	HttpServer *http.Server
-	router     chi.Router
-	Db         *db.DB
-	Log        *log.Logger
+	Config util.Config
+	Db     *db.DB
+	Log    *zap.SugaredLogger
 }
 
-type Routes map[string]http.HandlerFunc
-
-func CreateServer(Db *db.DB, log *log.Logger, config util.Config) *Server {
-	router := chi.NewRouter()
-	server := &http.Server{Addr: config.GetUrl(), Handler: router}
+func CreateServer(Db *db.DB, log *zap.SugaredLogger, config util.Config) *Server {
 	return &Server{
-		config:     config,
-		HttpServer: server,
-		router:     router,
-		Db:         Db,
-		Log:        log,
+		Config: config,
+		Db:     Db,
+		Log:    log,
 	}
 }
 
-func (s *Server) Start() error {
-	s.router.Use(middleware.Logger)
-	s.router.Get("/version", s.VersionFunc)
-	return s.HttpServer.ListenAndServe()
+func (s *Server) Start() {
+	// start the background processing routines
 }
 
-func (s *Server) VersionFunc(w http.ResponseWriter, r *http.Request) {
-	data, err := json.Marshal(contracts.Version{Version: util.VERSION})
-	fmt.Println("data: ", data)
+func (s *Server) Version() contracts.VersionRes {
+	return contracts.VersionRes{Version: util.VERSION, Success: true}
+}
+
+func (s *Server) WatchUp(req contracts.WatchUpReq) (contracts.WatchUpRes, error) {
+	if !filepath.IsAbs(req.Path) {
+		return contracts.WatchUpRes{Success: false}, fmt.Errorf("Path must be absolute")
+	}
+
+	dirs, err := s.Db.GetDirectories()
 	if err != nil {
-		w.Write([]byte(err.Error()))
-		return
+		return contracts.WatchUpRes{Success: false}, err
 	}
-	w.Write(data)
+	if dirs != nil {
+		if slices.ContainsFunc(dirs, func(entry db.Directory) bool { return util.IsDirChild(req.Path, entry.Path) }) {
+			return contracts.WatchUpRes{Success: false}, fmt.Errorf("Path is already being watched")
+		}
+	}
+	s.Db.AddDirectory(req.Path)
+	return contracts.WatchUpRes{Success: true}, nil
+}
+
+func (s *Server) WatchDown(req contracts.WatchDownReq) (contracts.WatchDownRes, error) {
+	if !filepath.IsAbs(req.Path) {
+		return contracts.WatchDownRes{Success: false}, fmt.Errorf("Path must be absolute")
+	}
+	err := s.Db.RemoveDirectory(req.Path)
+	if err != nil {
+		return contracts.WatchDownRes{Success: false}, fmt.Errorf("Path must be absolute")
+	}
+	return contracts.WatchDownRes{Success: true}, nil
+}
+
+func (s *Server) WatchList() (contracts.WatchListRes, error) {
+	dirs, err := s.Db.GetDirectories()
+	if err != nil {
+		return contracts.WatchListRes{Success: false}, err
+	}
+	return contracts.WatchListRes{Success: true, Directories: dirs}, nil
 }
