@@ -12,9 +12,10 @@ var ServerCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Starts the server.",
 	Run: func(cmd *cobra.Command, args []string) {
-		db := db.NewDB("./test.db")
-		sugar := util.CreateLogger()
-		server := http.NewHttpServer(server.CreateServer(db, sugar, util.GetConfig()))
+		config := util.GetConfig()
+		db := db.NewDB(config.DBPath)
+		log := util.CreateLogger()
+		server := http.NewHttpServer(server.CreateServer(db, log, config))
 		server.Start()
 	},
 }

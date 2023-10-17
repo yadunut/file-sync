@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,6 +20,7 @@ type HttpServer struct {
 func NewHttpServer(s *server.Server) *HttpServer {
 	router := chi.NewRouter()
 	router.Use(middleware.Logger)
+	s.Log.Info("Starting server on ", s.Config.GetUrl())
 	return &HttpServer{
 		Server:     s,
 		router:     router,
@@ -27,12 +29,16 @@ func NewHttpServer(s *server.Server) *HttpServer {
 }
 
 func (s *HttpServer) Start() error {
+	var wg sync.WaitGroup
 	s.router.Get("/version", s.VersionFunc)
 	s.router.Post("/watch/up", s.WatchUpFunc)
 	s.router.Post("/watch/down", s.WatchDownFunc)
 	s.router.Get("/watch", s.WatchListFunc)
-	s.Server.Start()
-	return s.httpServer.ListenAndServe()
+	s.Server.Start(&wg)
+	wg.Add(1)
+	go func() { s.httpServer.ListenAndServe(); wg.Done() }()
+	wg.Wait()
+	return nil
 }
 
 func (s *HttpServer) VersionFunc(w http.ResponseWriter, r *http.Request) {

@@ -77,7 +77,7 @@ var WatchListCmd = &cobra.Command{
 			return
 		}
 		for _, dir := range res.Directories {
-			log.Info(dir)
+			log.Info(dir.Path)
 		}
 	},
 }

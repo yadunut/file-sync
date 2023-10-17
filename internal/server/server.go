@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"slices"
 
@@ -26,7 +27,7 @@ func CreateServer(Db *db.DB, log *zap.SugaredLogger, config util.Config) *Server
 	}
 }
 
-func (s *Server) Start() {
+func (s *Server) Start(wg *sync.WaitGroup) {
 	// start the background processing routines
 }
 

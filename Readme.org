@@ -28,7 +28,7 @@ So firstly, we need to create a server and a client. The server will listen for 
 
 *** DONE Create a server
 So running ~file-sync server~ will start a http server. I will need a Server struct to be passed around with a logger, database connection and other info necessary. Maybe cancellation would be good also. GRPC sounds interesting for this 👀
-*** TODO Create the schema for adding directories to the database
+*** DONE Create the schema for adding directories to the database
 Schema for files
 #+begin_src sqlite
 CREATE TABLE IF NOT EXISTS DIRECTORIES (
