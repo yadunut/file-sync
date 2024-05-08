@@ -58,6 +58,14 @@ type Directory struct {
 	Deleted bool   `db:"deleted"`
 	Base
 }
+type File struct {
+	Path          string    `db:"path"`
+	Hash          []byte    `db:"hash"`
+	FileUpdatedAt time.Time `db:"file_updated_at"`
+	FileCreatedAt time.Time `db:"file_created_at"`
+	Deleted       bool      `db:"deleted"`
+	Base
+}
 
 func NewDB(path string) *DB {
 	db := sqlx.MustConnect("sqlite3", path)
@@ -90,4 +98,16 @@ func (db *DB) RemoveDirectory(path string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (db *DB) AddFile(path string, hash string, createTime time.Time, updateTime time.Time) error {
+	return nil
+}
+
+func (db *DB) FileChanged(path string) bool {
+	return false
+}
+
+func (db *DB) UpdateFile(path string, hash string, createdTime time.Time, updatedTime time.Time) error {
+	return nil
 }

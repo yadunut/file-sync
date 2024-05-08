@@ -14,9 +14,11 @@ import (
 )
 
 type Server struct {
-	Config util.Config
-	Db     *db.DB
-	Log    *zap.SugaredLogger
+	Config      util.Config
+	Db          *db.DB
+	Log         *zap.SugaredLogger
+	Files       <-chan string
+	Directories <-chan string
 }
 
 func CreateServer(Db *db.DB, log *zap.SugaredLogger, config util.Config) *Server {
@@ -27,8 +29,16 @@ func CreateServer(Db *db.DB, log *zap.SugaredLogger, config util.Config) *Server
 	}
 }
 
-func (s *Server) Start(wg *sync.WaitGroup) {
-	// start the background processing routines
+func (s *Server) Start(wg *sync.WaitGroup, cancel <-chan struct{}) {
+	// spawn routine to process directories into files
+	go func() {}()
+	// spawn routine to start the ionotify
+	// start the fsnotify to watch.
+	go func() {}()
+	// spawn routine to hash files
+	go func() {}()
+	// finally collect files to database
+	go func() {}()
 }
 
 func (s *Server) Version() contracts.VersionRes {
@@ -50,6 +60,7 @@ func (s *Server) WatchUp(req contracts.WatchUpReq) (contracts.WatchUpRes, error)
 		}
 	}
 	s.Db.AddDirectory(req.Path)
+	// add to Processor
 	return contracts.WatchUpRes{Success: true}, nil
 }
 

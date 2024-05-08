@@ -1,6 +1,10 @@
 package contracts
 
-import "github.com/yadunut/file-sync/internal/server/db"
+import (
+	"time"
+
+	"github.com/yadunut/file-sync/internal/server/db"
+)
 
 type ErrorRes struct {
 	Success bool   `json:"success"`

@@ -12,7 +12,7 @@ import (
 )
 
 type HttpServer struct {
-	*server.Server
+	Server     *server.Server
 	router     chi.Router
 	httpServer http.Server
 }
@@ -42,7 +42,7 @@ func (s *HttpServer) Start() error {
 }
 
 func (s *HttpServer) VersionFunc(w http.ResponseWriter, r *http.Request) {
-	writeSuccess(w, s.Version())
+	writeSuccess(w, s.Server.Version())
 }
 
 func (s *HttpServer) WatchUpFunc(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func (s *HttpServer) WatchUpFunc(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	res, err := s.WatchUp(watchUp)
+	res, err := s.Server.WatchUp(watchUp)
 	if err != nil {
 		writeError(w, err)
 		return
